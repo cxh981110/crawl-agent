@@ -1,0 +1,9 @@
+prefix=D:/agent_item/.conda_envs/agent_item_20260403/Library 
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: OpenSSL
+Description: Secure Sockets Layer and cryptography libraries and tools
+Requires: libssl libcrypto
+Version: 3.5.5 

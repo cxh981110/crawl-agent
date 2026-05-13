@@ -1,0 +1,22 @@
+{
+  "company_name": {
+    "labels": ["公司名称", "企业名称", "名称", "companyName", "name"],
+    "type": "string"
+  },
+  "contact_phone": {
+    "labels": ["联系电话", "电话", "手机", "phone", "mobile"],
+    "type": "string"
+  },
+  "email": {
+    "labels": ["邮箱", "电子邮箱", "email"],
+    "type": "string"
+  },
+  "address": {
+    "labels": ["地址", "联系地址", "经营地址", "address"],
+    "type": "string"
+  },
+  "products": {
+    "labels": ["主营产品", "产品", "products", "productList"],
+    "type": "list"
+  }
+}

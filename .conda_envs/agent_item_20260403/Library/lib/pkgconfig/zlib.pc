@@ -1,0 +1,13 @@
+prefix=D:/agent_item/.conda_envs/agent_item_20260403/Library
+exec_prefix=D:/agent_item/.conda_envs/agent_item_20260403/Library
+libdir=D:/agent_item/.conda_envs/agent_item_20260403/Library/lib
+sharedlibdir=D:/agent_item/.conda_envs/agent_item_20260403/Library/lib
+includedir=D:/agent_item/.conda_envs/agent_item_20260403/Library/include
+
+Name: zlib
+Description: zlib compression library
+Version: 1.3.1
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lz
+Cflags: -I${includedir}

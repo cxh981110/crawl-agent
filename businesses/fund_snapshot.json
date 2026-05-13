@@ -1,0 +1,70 @@
+﻿{
+  "prompt": "Extract all fund distribution institutions from the target page. The page may contain a table of multiple sales organizations. You MUST extract each row as a separate item in a list. Each row represents one sales organization.",
+  "fields_json": {
+    "fund_name": {
+      "labels": ["产品全称", "产品名称", "产品简称", "基金名称", "集合计划名称", "计划名称", "fund name", "name", "product name", "fundName"],
+      "type": "string",
+      "description": "Name of the fund"
+    },
+    "fund_code": {
+      "labels": ["产品代码", "产品编码", "基金代码", "基金编号", "产品编号", "fund code", "code", "symbol", "fundCode"],
+      "type": "string",
+      "description": "Fund code or identifier"
+    },
+    "org_name": {
+      "labels": ["销售机构名称", "销售机构", "代销机构", "机构名称", "organization", "company"],
+      "type": "string",
+      "description": "Name of the sales institution"
+    },
+    "phone": {
+      "labels": ["电话", "客服电话", "联系电话", "phone"],
+      "type": "string",
+      "description": "Customer service phone number, return null if missing"
+    },
+    "WEB": {
+      "labels": ["网址", "网站", "官方网站", "WEB", "web"],
+      "type": "string",
+      "description": "Official website URL, return null if missing"
+    },
+    "is_distributor": {
+      "labels": ["是否代销", "代销", "is distributor"],
+      "type": "boolean",
+      "description": "Whether this institution is a third-party distributor. If not explicitly stated, compare with the fund company's name: same means direct sale (false), otherwise distributor (true)"
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "url": {"type": "string"},
+      "strategy": {"type": "string"},
+      "data": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "fund_name": {"type": ["string", "null"]},
+            "fund_code": {"type": ["string", "null"]},
+            "org_name": {"type": ["string", "null"]},
+            "phone": {"type": ["string", "null"]},
+            "WEB": {"type": ["string", "null"]},
+            "is_distributor": {"type": ["boolean", "null"]}
+          },
+          "required": ["fund_name", "fund_code", "org_name", "phone", "WEB", "is_distributor"],
+          "additionalProperties": false
+        }
+      },
+      "missing_fields": {
+        "type": "array",
+        "items": {"type": "string"}
+      },
+      "evidence": {"type": "object"}
+    },
+    "required": ["url", "strategy", "data", "missing_fields", "evidence"],
+    "additionalProperties": true
+  },
+  "record_mode": "array",
+  "source_hint": "table",
+  "tool_hints": {
+    "table_hint": "销售机构"
+  }
+}

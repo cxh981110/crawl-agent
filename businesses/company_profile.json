@@ -1,0 +1,129 @@
+{
+  "prompt": "Extract company profile information from the target page. If data appears in API responses, use that first. If not, use visible page content.",
+  "fields_json": {
+    "company_name": {
+      "labels": [
+        "company name",
+        "name",
+        "companyName",
+        "enterprise name"
+      ],
+      "type": "string"
+    },
+    "contact_phone": {
+      "labels": [
+        "phone",
+        "telephone",
+        "mobile",
+        "contact number"
+      ],
+      "type": "string"
+    },
+    "email": {
+      "labels": [
+        "email",
+        "mailbox"
+      ],
+      "type": "string"
+    },
+    "address": {
+      "labels": [
+        "address",
+        "location",
+        "registered address"
+      ],
+      "type": "string"
+    },
+    "products": {
+      "labels": [
+        "products",
+        "main products",
+        "product list"
+      ],
+      "type": "list"
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string"
+      },
+      "strategy": {
+        "type": "string"
+      },
+      "data": {
+        "type": "object",
+        "properties": {
+          "company_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contact_phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "products": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "company_name",
+          "contact_phone",
+          "email",
+          "address",
+          "products"
+        ],
+        "additionalProperties": false
+      },
+      "missing_fields": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "evidence": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "url",
+      "strategy",
+      "data",
+      "missing_fields",
+      "evidence"
+    ],
+    "additionalProperties": true
+  },
+  "record_mode": "object",
+  "source_hint": "auto",
+  "tool_hints": {
+    "token_budget": 3000
+  }
+}
