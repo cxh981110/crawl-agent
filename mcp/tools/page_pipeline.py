@@ -39,12 +39,20 @@ def fetch_and_clean_page(
     wait_seconds: float = 2.0,
     actions_json: str = "[]",
     timeout: int = 15,
+    section_hint: str = "",
+    auto_paginate: bool = True,
+    max_pages: int = 20,
+    next_selector: str = "",
 ) -> dict[str, Any]:
     page_payload = fetch_page(
         url=url,
         wait_seconds=wait_seconds,
         actions_json=actions_json,
         timeout=timeout,
+        section_hint=section_hint,
+        auto_paginate=auto_paginate,
+        max_pages=max_pages,
+        next_selector=next_selector,
     )
     cleaned_html = clean_html_keep_structure(page_payload.get("html", ""))
     payload = dict(page_payload)

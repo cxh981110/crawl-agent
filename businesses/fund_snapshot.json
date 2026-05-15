@@ -1,33 +1,33 @@
-﻿{
+{
   "prompt": "Extract all fund distribution institutions from the target page. The page may contain a table of multiple sales organizations. You MUST extract each row as a separate item in a list. Each row represents one sales organization.",
   "fields_json": {
     "fund_name": {
-      "labels": ["产品全称", "产品名称", "产品简称", "基金名称", "集合计划名称", "计划名称", "fund name", "name", "product name", "fundName"],
+      "labels": ["\u4ea7\u54c1\u5168\u79f0", "\u4ea7\u54c1\u540d\u79f0", "\u4ea7\u54c1\u7b80\u79f0", "\u57fa\u91d1\u540d\u79f0", "\u57fa\u91d1\u7b80\u79f0", "\u96c6\u5408\u8ba1\u5212\u540d\u79f0", "\u8ba1\u5212\u540d\u79f0", "fund name", "name", "product name", "fundName", "fundFullName"],
       "type": "string",
       "description": "Name of the fund"
     },
     "fund_code": {
-      "labels": ["产品代码", "产品编码", "基金代码", "基金编号", "产品编号", "fund code", "code", "symbol", "fundCode"],
+      "labels": ["\u4ea7\u54c1\u4ee3\u7801", "\u4ea7\u54c1\u7f16\u7801", "\u57fa\u91d1\u4ee3\u7801", "\u57fa\u91d1\u7f16\u7801", "\u4ea7\u54c1\u7f16\u53f7", "fund code", "fundCode", "productCode", "symbol"],
       "type": "string",
       "description": "Fund code or identifier"
     },
     "org_name": {
-      "labels": ["销售机构名称", "销售机构", "代销机构", "机构名称", "organization", "company"],
+      "labels": ["\u9500\u552e\u673a\u6784\u540d\u79f0", "\u9500\u552e\u673a\u6784", "\u4ee3\u9500\u673a\u6784", "\u673a\u6784\u540d\u79f0", "\u673a\u6784", "agencyName", "organization", "company"],
       "type": "string",
       "description": "Name of the sales institution"
     },
     "phone": {
-      "labels": ["电话", "客服电话", "联系电话", "phone"],
+      "labels": ["\u7535\u8bdd", "\u5ba2\u670d\u7535\u8bdd", "\u8054\u7cfb\u7535\u8bdd", "phone", "tel", "telephone"],
       "type": "string",
       "description": "Customer service phone number, return null if missing"
     },
     "WEB": {
-      "labels": ["网址", "网站", "官方网站", "WEB", "web"],
+      "labels": ["\u7f51\u5740", "\u7f51\u7ad9", "\u5b98\u65b9\u7f51\u7ad9", "WEB", "web", "website"],
       "type": "string",
       "description": "Official website URL, return null if missing"
     },
     "is_distributor": {
-      "labels": ["是否代销", "代销", "is distributor"],
+      "labels": ["\u662f\u5426\u4ee3\u9500", "\u4ee3\u9500", "is distributor"],
       "type": "boolean",
       "description": "Whether this institution is a third-party distributor. If not explicitly stated, compare with the fund company's name: same means direct sale (false), otherwise distributor (true)"
     }
@@ -65,6 +65,8 @@
   "record_mode": "array",
   "source_hint": "table",
   "tool_hints": {
-    "table_hint": "销售机构"
+    "table_hint": "\u9500\u552e\u673a\u6784",
+    "auto_paginate": true,
+    "max_pages": 50
   }
 }

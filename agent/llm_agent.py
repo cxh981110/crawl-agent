@@ -178,13 +178,31 @@ def _tool_step_node(state: LlmState, config: Dict[str, Any]) -> LlmState:
             # Enforce stable arguments to prevent endless LLM tool-arg drift.
             if tool_name == "extract_fields":
                 args["fields_json"] = state.get("fields_json_text", args.get("fields_json", "{}"))
+                args.pop("actions_json", None)
+                args.pop("wait_seconds", None)
+                args.pop("timeout", None)
             elif tool_name in {"extract_table_rows", "extract_list_rows"}:
                 args["row_schema_json"] = state.get("fields_json_text", args.get("row_schema_json", "{}"))
+                args.pop("actions_json", None)
+                args.pop("wait_seconds", None)
+                args.pop("timeout", None)
                 tool_hints = state.get("tool_hints", {}) or {}
                 if tool_name == "extract_table_rows" and "table_hint" in tool_hints and "table_hint" not in args:
                     args["table_hint"] = tool_hints["table_hint"]
+                if tool_name == "extract_table_rows":
+                    for key in ("auto_paginate", "max_pages", "next_selector"):
+                        if key in tool_hints and key not in args:
+                            args[key] = tool_hints[key]
                 if tool_name == "extract_list_rows":
-                    for key in ("list_selector", "item_selector", "date_regex", "max_items"):
+                    for key in (
+                        "list_selector",
+                        "item_selector",
+                        "date_regex",
+                        "max_items",
+                        "auto_paginate",
+                        "max_pages",
+                        "next_selector",
+                    ):
                         if key in tool_hints and key not in args:
                             args[key] = tool_hints[key]
 

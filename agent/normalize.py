@@ -15,7 +15,7 @@ def coerce_value(value, field_type: str):
         return ", ".join(str(item).strip() for item in value if str(item).strip())
 
     text = str(value).strip()
-    if not text:
+    if not text or text in {"-", "--", "—", "暂无", "无"}:
         return None
 
     if field_type == "list":

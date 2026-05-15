@@ -141,6 +141,9 @@ def extract_list_rows(
     wait_seconds: float = 2.0,
     actions_json: str = "[]",
     timeout: int = 15,
+    auto_paginate: bool = True,
+    max_pages: int = 20,
+    next_selector: str = "",
 ) -> str:
     raw_schema = json.loads(row_schema_json)
     schema = build_schema(raw_schema)
@@ -150,6 +153,9 @@ def extract_list_rows(
         wait_seconds=wait_seconds,
         actions_json=actions_json,
         timeout=timeout,
+        auto_paginate=auto_paginate,
+        max_pages=max_pages,
+        next_selector=next_selector,
     )
     base_url = page_payload.get("url", url)
     soup = BeautifulSoup(page_payload.get("cleaned_html", ""), "lxml")
@@ -188,6 +194,8 @@ def extract_list_rows(
         "evidence": {
             "candidate_count": len(candidates),
             "row_count": len(rows),
+            "page_count": page_payload.get("page_count", 1),
+            "pages": page_payload.get("pages", []),
             "list_selector": list_selector,
             "item_selector": item_selector,
         },

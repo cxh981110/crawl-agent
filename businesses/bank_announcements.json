@@ -1,50 +1,35 @@
-{
-  "prompt": "Extract announcement list records from the target page. Each announcement should be one item in data array.",
-  "record_mode": "array",
-  "source_hint": "list",
-  "tool_hints": {
-    "list_selector": "",
-    "item_selector": "",
-    "date_regex": "",
-    "max_items": 100
-  },
+﻿{
+  "prompt": "Extract announcement records from the target source. Output one announcement per item in data array.",
   "fields_json": {
     "announcement_title": {
-      "labels": ["公告名称", "公告标题", "title", "name"],
-      "type": "string"
+      "labels": ["公告名称", "公告标题", "标题", "title", "name"],
+      "type": "string",
+      "description": "Announcement title"
     },
     "announcement_url": {
-      "labels": ["公告链接", "链接", "url", "href"],
-      "type": "string"
+      "labels": ["公告链接", "链接", "网址", "url", "href"],
+      "type": "string",
+      "description": "Announcement URL"
     },
     "publish_date": {
-      "labels": ["发布日期", "发布时间", "日期", "date", "time"],
-      "type": "string"
+      "labels": ["公告日期", "发布日期", "发布时间", "日期", "date", "time"],
+      "type": "string",
+      "description": "Announcement publish date"
     }
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "url": {
-        "type": "string"
-      },
-      "strategy": {
-        "type": "string"
-      },
+      "url": {"type": "string"},
+      "strategy": {"type": "string"},
       "data": {
         "type": "array",
         "items": {
           "type": "object",
           "properties": {
-            "announcement_title": {
-              "type": ["string", "null"]
-            },
-            "announcement_url": {
-              "type": ["string", "null"]
-            },
-            "publish_date": {
-              "type": ["string", "null"]
-            }
+            "announcement_title": {"type": ["string", "null"]},
+            "announcement_url": {"type": ["string", "null"]},
+            "publish_date": {"type": ["string", "null"]}
           },
           "required": ["announcement_title", "announcement_url", "publish_date"],
           "additionalProperties": false
@@ -52,15 +37,20 @@
       },
       "missing_fields": {
         "type": "array",
-        "items": {
-          "type": "string"
-        }
+        "items": {"type": "string"}
       },
-      "evidence": {
-        "type": "object"
-      }
+      "evidence": {"type": "object"}
     },
     "required": ["url", "strategy", "data", "missing_fields", "evidence"],
     "additionalProperties": true
+  },
+  "record_mode": "array",
+  "source_hint": "auto",
+  "tool_hints": {
+    "table_hint": "公告",
+    "list_selector": "",
+    "item_selector": "",
+    "date_regex": "",
+    "max_items": 100
   }
 }

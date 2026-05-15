@@ -1,6 +1,11 @@
 ﻿import argparse
 import json
+from pathlib import Path
 import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.llm_agent import run_llm_agent
 
@@ -11,7 +16,7 @@ def main() -> int:
     #     print('Usage: python -m agent.llm_cli "<url>" [--business <name>] [--model <name>]', file=sys.stderr)
     #     return 1
 
-    url = "https://www.cindasc.com/osoa/views/xdyw/zcgl/djh/cpxq/index.html?product_id=4&product_code=970022&product_type=4"
+    url = "https://www.ydamc.com/#/personal/funddetail?fundcode=017440"
     business = "fund_snapshot"
     parser = argparse.ArgumentParser(description="Run LLM + MCP extraction agent.")
     parser.add_argument("url", nargs="?", default=url, help="Target page URL")
