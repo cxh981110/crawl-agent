@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from tools.extract_fields import extract_fields
 from tools.extract_list_rows import extract_list_rows
+from tools.extract_nav_pdf_indices import extract_nav_pdf_indices
 from tools.extract_table_rows import extract_table_rows
 
 
@@ -134,6 +135,44 @@ TOOLS: Dict[str, ToolSpec] = {
             "additionalProperties": False,
         },
         handler=extract_list_rows,
+    ),
+    "extract_nav_pdf_indices": ToolSpec(
+        name="extract_nav_pdf_indices",
+        description=(
+            "Extract product NAV/yield indices from a PDF announcement URL. "
+            "It can also parse PDFs linked on a list page as a fallback. "
+            "Returns bankName, platformCode, crawlerTime and indices."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "bank_name": {
+                    "type": "string",
+                    "default": "北银理财",
+                    "description": "Bank or wealth management company name.",
+                },
+                "platform_code": {
+                    "type": "string",
+                    "default": "8001_BYLC",
+                    "description": "Platform code to attach to output records.",
+                },
+                "max_pdfs": {
+                    "type": "integer",
+                    "default": 20,
+                    "description": "Maximum number of linked PDFs to parse from the list page.",
+                },
+                "timeout": {"type": "integer", "default": 20},
+                "wait_seconds": {
+                    "type": "number",
+                    "default": 8.0,
+                    "description": "Wait seconds for dynamic HTML NAV pages.",
+                },
+            },
+            "required": ["url"],
+            "additionalProperties": False,
+        },
+        handler=extract_nav_pdf_indices,
     ),
 }
 

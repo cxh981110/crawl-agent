@@ -58,6 +58,10 @@ def _safe_eles(scope: Any, locator: str, timeout: float = 1.0) -> list[Any]:
 
 def _build_chromium_options(use_new_headless: bool) -> ChromiumOptions:
     options = ChromiumOptions().auto_port().headless()
+    options.set_user_agent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+    )
     options.set_argument("--disable-gpu")
     options.set_argument("--no-first-run")
     options.set_argument("--disable-dev-shm-usage")

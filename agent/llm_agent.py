@@ -174,6 +174,7 @@ def _tool_step_node(state: LlmState, config: Dict[str, Any]) -> LlmState:
         try:
             args = json.loads(args_text)
             tool_name = tool_call["name"]
+            args["url"] = state["url"]
 
             # Enforce stable arguments to prevent endless LLM tool-arg drift.
             if tool_name == "extract_fields":
@@ -205,6 +206,11 @@ def _tool_step_node(state: LlmState, config: Dict[str, Any]) -> LlmState:
                     ):
                         if key in tool_hints and key not in args:
                             args[key] = tool_hints[key]
+            elif tool_name == "extract_nav_pdf_indices":
+                tool_hints = state.get("tool_hints", {}) or {}
+                for key in ("bank_name", "platform_code", "max_pdfs", "timeout", "wait_seconds"):
+                    if key in tool_hints and key not in args:
+                        args[key] = tool_hints[key]
 
             tool_output = config["mcp_client"].call_tool(tool_call["name"], args)
             parsed_output = _try_parse_json(tool_output)
@@ -337,7 +343,9 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
 
         # Expose only relevant tools for the current business mode/hint.
         allowed_tool_names = set()
-        if (data_schema_type == "array" or record_mode == "array") and source_hint == "table":
+        if source_hint == "nav_pdf":
+            allowed_tool_names = {"extract_nav_pdf_indices"}
+        elif (data_schema_type == "array" or record_mode == "array") and source_hint == "table":
             allowed_tool_names = {"extract_table_rows"}
         elif (data_schema_type == "array" or record_mode == "array") and source_hint == "list":
             allowed_tool_names = {"extract_list_rows"}
@@ -356,6 +364,7 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
             "Prefer API/network-derived data before HTML parsing. "
             "Page fetch and HTML cleaning are fixed internal steps in extraction tools. "
             "Use extract_fields for object extraction, and use extract_table_rows/extract_list_rows for array extraction. "
+            "Use extract_nav_pdf_indices when source_hint is nav_pdf. "
             "Return strict JSON that matches the provided output schema exactly."
         )
         if data_schema_type == "array" or record_mode == "array":
@@ -375,6 +384,7 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
             "If extracting array rows, pass this same JSON string to extract_table_rows/extract_list_rows as row_schema_json.\n"
             "When source_hint=list and tool_hints has selectors, pass them to extract_list_rows.\n"
             "When source_hint=table and tool_hints has table_hint, pass it to extract_table_rows.\n\n"
+            "When source_hint=nav_pdf, call extract_nav_pdf_indices with url and matching tool_hints.\n\n"
             "Do not invent or modify schema fields for tool arguments; always use the provided schema JSON.\n\n"
             "Output JSON schema:\n{}\n"
             "You can call tools multiple times to complete extraction."

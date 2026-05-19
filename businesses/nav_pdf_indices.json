@@ -1,0 +1,75 @@
+{
+  "prompt": "Extract product NAV or yield index records from the target PDF announcement URL. Output bankName, platformCode, crawlerTime, and indices.",
+  "fields_json": {
+    "indices": {
+      "labels": ["净值", "单位净值", "累计净值", "万份收益", "七日年化收益率"],
+      "type": "array",
+      "description": "Product NAV/yield records parsed from PDF announcements"
+    },
+    "bankName": {
+      "labels": ["机构名称", "银行名称", "理财公司"],
+      "type": "string",
+      "description": "Bank or wealth management company name"
+    },
+    "platformCode": {
+      "labels": ["平台代码"],
+      "type": "string",
+      "description": "Platform code"
+    },
+    "crawlerTime": {
+      "labels": ["采集时间"],
+      "type": "string",
+      "description": "Crawler timestamp"
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "url": {"type": "string"},
+      "strategy": {"type": "string"},
+      "data": {
+        "type": "object",
+        "properties": {
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "platformCode": {"type": "string"},
+                "productCode": {"type": "string"},
+                "navDate": {"type": "string"},
+                "nav": {"type": "string"},
+                "accNav": {"type": "string"},
+                "tenThousandRevenue": {"type": "string"},
+                "sevenDayAnnualizedYield": {"type": "string"}
+              },
+              "required": ["platformCode", "productCode", "navDate"],
+              "additionalProperties": false
+            }
+          },
+          "bankName": {"type": "string"},
+          "platformCode": {"type": "string"},
+          "crawlerTime": {"type": "string"}
+        },
+        "required": ["indices", "bankName", "platformCode", "crawlerTime"],
+        "additionalProperties": false
+      },
+      "missing_fields": {
+        "type": "array",
+        "items": {"type": "string"}
+      },
+      "evidence": {"type": "object"}
+    },
+    "required": ["url", "strategy", "data", "missing_fields", "evidence"],
+    "additionalProperties": true
+  },
+  "record_mode": "object",
+  "source_hint": "nav_pdf",
+  "tool_hints": {
+    "bank_name": "北银理财",
+    "platform_code": "8001_BYLC",
+    "max_pdfs": 20,
+    "timeout": 20,
+    "wait_seconds": 8.0
+  }
+}
