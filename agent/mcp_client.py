@@ -1,8 +1,10 @@
 import json
+import queue
 import re
 import subprocess
 import sys
 import os
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -58,7 +60,8 @@ class StdioMCPClient:
 
         self._proc.stdin.write(json.dumps(payload, ensure_ascii=True) + "\n")
         self._proc.stdin.flush()
-        line = self._proc.stdout.readline()
+        timeout_seconds = float(os.getenv("MCP_READ_TIMEOUT_SECONDS", "90"))
+        line = self._read_stdout_line(timeout_seconds=timeout_seconds)
         if not line:
             stderr_text = ""
             if self._proc.stderr is not None:
@@ -69,6 +72,30 @@ class StdioMCPClient:
         if "error" in response:
             raise RuntimeError("MCP error: {}".format(response["error"]))
         return response.get("result", {})
+
+    def _read_stdout_line(self, timeout_seconds: float) -> str:
+        if self._proc is None or self._proc.stdout is None:
+            raise RuntimeError("MCP client is not started.")
+
+        result_queue: "queue.Queue[str]" = queue.Queue(maxsize=1)
+
+        def reader() -> None:
+            try:
+                result_queue.put(self._proc.stdout.readline())
+            except Exception:
+                result_queue.put("")
+
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+        try:
+            return result_queue.get(timeout=timeout_seconds)
+        except queue.Empty as exc:
+            try:
+                self._proc.terminate()
+            except Exception:
+                pass
+            self._proc = None
+            raise TimeoutError("MCP request timed out after {} seconds.".format(timeout_seconds)) from exc
 
     def list_tools(self) -> List[Dict[str, Any]]:
         result = self.request("tools/list", {})

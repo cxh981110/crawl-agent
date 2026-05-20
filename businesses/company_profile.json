@@ -1,5 +1,5 @@
 {
-  "prompt": "Extract company profile information from the target page. If data appears in API responses, use that first. If not, use visible page content.",
+  "prompt_file": "company_profile.md",
   "fields_json": {
     "company_name": {
       "labels": [
@@ -122,8 +122,5 @@
     "additionalProperties": true
   },
   "record_mode": "object",
-  "source_hint": "auto",
-  "tool_hints": {
-    "token_budget": 3000
-  }
+  "tool_hints": {}
 }

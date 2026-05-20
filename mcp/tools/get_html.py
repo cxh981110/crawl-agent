@@ -1,9 +1,18 @@
 import json
 import re
 import time
+from math import ceil
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from typing import Any, Optional
 
+import requests
 from DrissionPage import ChromiumOptions, ChromiumPage
+
+try:
+    from playwright.sync_api import Page, sync_playwright
+except Exception:  # pragma: no cover - optional dependency fallback
+    Page = Any
+    sync_playwright = None
 
 
 def _parse_actions(actions_json: str) -> list[dict]:
@@ -58,6 +67,11 @@ def _safe_eles(scope: Any, locator: str, timeout: float = 1.0) -> list[Any]:
 
 def _build_chromium_options(use_new_headless: bool) -> ChromiumOptions:
     options = ChromiumOptions().auto_port().headless()
+    chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+    try:
+        options.set_browser_path(chrome_path)
+    except Exception:
+        pass
     options.set_user_agent(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
@@ -80,6 +94,408 @@ def _create_chromium_page() -> ChromiumPage:
     if last_error is not None:
         raise last_error
     raise RuntimeError("Unable to create Chromium page.")
+
+
+def _playwright_click_text(page: Page, text: str, wait_seconds: float) -> bool:
+    if not text:
+        return False
+    try:
+        clicked = page.evaluate(
+            """
+            (keyword) => {
+              const nodes = Array.from(document.querySelectorAll('a,button,li,span,div'))
+                .filter(node => {
+                  const style = window.getComputedStyle(node);
+                  return style && style.visibility !== 'hidden' && style.display !== 'none';
+                })
+                .map(node => ({node, text: (node.textContent || '').trim()}))
+                .filter(item => item.text && item.text.includes(keyword))
+                .sort((a, b) => {
+                  const clickable = (item) => {
+                    const tag = item.node.tagName.toLowerCase();
+                    return (item.node.getAttribute('onclick') || item.node.getAttribute('href') || ['a','button','li'].includes(tag)) ? 1 : 0;
+                  };
+                  const clickableDelta = clickable(b) - clickable(a);
+                  if (clickableDelta) return clickableDelta;
+                  const exactDelta = (b.text === keyword ? 1 : 0) - (a.text === keyword ? 1 : 0);
+                  if (exactDelta) return exactDelta;
+                  return a.text.length - b.text.length;
+                });
+              const target = nodes.length ? nodes[0].node : null;
+              if (!target) return false;
+              target.click();
+              return true;
+            }
+            """,
+            text,
+        )
+    except Exception:
+        clicked = False
+    if clicked and wait_seconds > 0:
+        page.wait_for_timeout(int(wait_seconds * 1000))
+    return bool(clicked)
+
+
+def _playwright_try_activate_tab(page: Page, section_hint: str, wait_seconds: float) -> None:
+    candidates = []
+    if section_hint:
+        candidates.append(section_hint)
+    candidates.extend(["\u4ee3\u9500\u673a\u6784", "\u9500\u552e\u673a\u6784", "\u673a\u6784"])
+    for keyword in candidates:
+        if _playwright_click_text(page, keyword, wait_seconds):
+            return
+
+
+def _playwright_run_actions(page: Page, actions: list[dict], timeout: int) -> None:
+    for action in actions:
+        action_type = action.get("type") or action.get("action") or "click"
+        if action_type == "wait":
+            page.wait_for_timeout(int(float(action.get("seconds", 1)) * 1000))
+            continue
+        if action_type == "scroll_bottom":
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(int(float(action.get("sleep_after", 1)) * 1000))
+            continue
+
+        locator = action.get("locator")
+        if not locator:
+            raise ValueError(f"Action requires locator: {action}")
+        target = page.locator(locator).first
+        target.wait_for(timeout=int(float(action.get("timeout", timeout)) * 1000))
+        if action_type == "click":
+            target.click()
+        elif action_type == "input":
+            target.fill(str(action.get("value", "")))
+        else:
+            raise ValueError(f"Unsupported action type: {action_type}")
+        page.wait_for_timeout(int(float(action.get("sleep_after", 1)) * 1000))
+
+
+def _playwright_page_signature(page: Page) -> str:
+    try:
+        html = page.content()
+        return "{}::{}".format(page.url or "", hash(html))
+    except Exception:
+        return str(time.time())
+
+
+def _playwright_collect(page: Page, seed_url: str) -> dict[str, str]:
+    main_html = page.content()
+    fragments = ["<section data-main-url='{}'>{}</section>".format(page.url or seed_url, main_html)]
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        try:
+            frame_html = frame.content()
+            fragments.append("<section data-frame-url='{}'>{}</section>".format(frame.url or "", frame_html))
+        except Exception:
+            continue
+    html = "<html><body>{}</body></html>".format("".join(fragments))
+    return {"url": page.url or seed_url, "title": page.title(), "html": html}
+
+
+def _playwright_click_next(page: Page, next_selector: str, wait_seconds: float) -> bool:
+    if next_selector:
+        try:
+            locator = page.locator(next_selector).first
+            if locator.count() > 0 and locator.is_enabled():
+                locator.click()
+                page.wait_for_timeout(int(wait_seconds * 1000))
+                return True
+        except Exception:
+            return False
+
+    return bool(
+        page.evaluate(
+            """
+            () => {
+              const needles = ['下一页', '下页', 'Next', '>'];
+              const nodes = Array.from(document.querySelectorAll('a,button,li,span'));
+              const target = nodes.find(node => {
+                const text = (node.textContent || '').trim();
+                const cls = (node.className || '').toString().toLowerCase();
+                const disabled = cls.includes('disabled') || node.getAttribute('aria-disabled') === 'true';
+                return !disabled && needles.includes(text);
+              });
+              if (!target) return false;
+              target.click();
+              return true;
+            }
+            """
+        )
+    )
+
+
+def _extract_total_and_rows(parsed: Any) -> tuple[Optional[int], int]:
+    total = None
+    row_count = 0
+
+    def visit(value: Any) -> None:
+        nonlocal total, row_count
+        if isinstance(value, list):
+            row_count = max(row_count, len(value))
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, dict):
+            return
+        for key, nested in value.items():
+            if key in ("total", "totalCount", "total_count", "recordCount"):
+                if isinstance(nested, int):
+                    total = nested if total is None else max(total, nested)
+                elif isinstance(nested, str) and nested.isdigit():
+                    parsed_total = int(nested)
+                    total = parsed_total if total is None else max(total, parsed_total)
+            elif key == "count" and isinstance(nested, int) and nested > row_count:
+                total = nested if total is None else max(total, nested)
+            visit(nested)
+
+    visit(parsed)
+    return total, row_count
+
+
+def _replace_query_param(url: str, key: str, value: int) -> str:
+    parts = urlparse(url)
+    query = parse_qs(parts.query, keep_blank_values=True)
+    query[key] = [str(value)]
+    return urlunparse(parts._replace(query=urlencode(query, doseq=True)))
+
+
+def _expand_paginated_json(items: list[dict[str, Any]], timeout: int) -> list[dict[str, Any]]:
+    expanded = list(items)
+    seen_urls = {item.get("url", "") for item in expanded}
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+        )
+    }
+    for item in list(items):
+        source_url = item.get("url", "")
+        query = parse_qs(urlparse(source_url).query)
+        if "pageNum" not in query or "pageSize" not in query:
+            continue
+        try:
+            page_num = int(query.get("pageNum", ["1"])[0])
+            page_size = int(query.get("pageSize", ["0"])[0])
+            parsed = json.loads(item.get("text", ""))
+        except Exception:
+            continue
+        if page_size <= 0:
+            continue
+        total, row_count = _extract_total_and_rows(parsed)
+        if total is None or total <= row_count:
+            continue
+        max_page = min(ceil(total / page_size), page_num + 3)
+        for next_page in range(page_num + 1, max_page + 1):
+            next_url = _replace_query_param(source_url, "pageNum", next_page)
+            if next_url in seen_urls:
+                continue
+            try:
+                response = requests.get(next_url, headers=headers, timeout=timeout, verify=False)
+                response.raise_for_status()
+                text = response.text or ""
+            except Exception:
+                continue
+            seen_urls.add(next_url)
+            expanded.append({"url": next_url, "status": response.status_code, "text": text})
+    return expanded
+
+
+def _expand_paginated_json_with_page(page: Page, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    expanded = list(items)
+    seen_urls = {item.get("url", "") for item in expanded}
+    for item in list(items):
+        source_url = item.get("url", "")
+        query = parse_qs(urlparse(source_url).query)
+        if "pageNum" not in query or "pageSize" not in query:
+            continue
+        try:
+            page_num = int(query.get("pageNum", ["1"])[0])
+            page_size = int(query.get("pageSize", ["0"])[0])
+            parsed = json.loads(item.get("text", ""))
+        except Exception:
+            continue
+        if page_size <= 0:
+            continue
+        total, row_count = _extract_total_and_rows(parsed)
+        if total is None or total <= row_count:
+            continue
+        max_page = min(ceil(total / page_size), page_num + 3)
+        for next_page in range(page_num + 1, max_page + 1):
+            next_url = _replace_query_param(source_url, "pageNum", next_page)
+            if next_url in seen_urls:
+                continue
+            try:
+                payload = page.evaluate(
+                    """
+                    async (url) => {
+                      const response = await fetch(url, {credentials: 'include'});
+                      return {status: response.status, text: await response.text()};
+                    }
+                    """,
+                    next_url,
+                )
+            except Exception:
+                continue
+            seen_urls.add(next_url)
+            expanded.append(
+                {
+                    "url": next_url,
+                    "status": payload.get("status") if isinstance(payload, dict) else None,
+                    "text": payload.get("text", "") if isinstance(payload, dict) else "",
+                }
+            )
+    return expanded
+
+
+def _trim_network_json(items: list[dict[str, Any]], max_items: int = 24, max_text: int = 20000) -> list[dict[str, Any]]:
+    trimmed = []
+    def score(item: dict[str, Any]) -> int:
+        haystack = "{} {}".format(item.get("url", ""), item.get("text", "")[:1000]).lower()
+        needles = ("agency", "sale", "sales", "fundagency", "销售", "代销", "直销", "机构")
+        return sum(1 for needle in needles if needle in haystack)
+
+    ranked = sorted(enumerate(items), key=lambda pair: (score(pair[1]), pair[0]), reverse=True)
+    selected_indexes = sorted(index for index, _ in ranked[:max_items])
+    for index in selected_indexes:
+        item = items[index]
+        text = item.get("text", "")
+        trimmed.append(
+            {
+                "url": item.get("url", ""),
+                "status": item.get("status"),
+                "text": text[:max_text] if isinstance(text, str) else text,
+            }
+        )
+    return trimmed
+
+
+def _fetch_page_playwright(
+    url: str,
+    wait_seconds: float,
+    actions_json: str,
+    timeout: int,
+    auto_paginate: bool,
+    max_pages: int,
+    section_hint: str,
+    next_selector: str,
+) -> dict:
+    if sync_playwright is None:
+        raise RuntimeError("playwright is not installed")
+
+    actions = _parse_actions(actions_json)
+    network_json: list[dict[str, Any]] = []
+    resource_urls: list[str] = []
+    timeout_ms = int(timeout * 1000)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(channel="chrome", headless=True)
+        try:
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+                )
+            )
+            page = context.new_page()
+
+            def on_response(response: Any) -> None:
+                try:
+                    response_url = response.url
+                    resource_urls.append(response_url)
+                    content_type = (response.headers.get("content-type") or "").lower()
+                    if "json" not in content_type:
+                        return
+                    text = response.text()
+                    network_json.append({"url": response_url, "status": response.status, "text": text})
+                except Exception:
+                    return
+
+            page.on("response", on_response)
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 10000))
+            except Exception:
+                pass
+            if wait_seconds > 0:
+                page.wait_for_timeout(int(wait_seconds * 1000))
+
+            _playwright_run_actions(page, actions, timeout=timeout)
+            _playwright_try_activate_tab(page=page, section_hint=section_hint, wait_seconds=wait_seconds)
+
+            pages: list[dict[str, str]] = []
+            seen_signatures = set()
+
+            def collect_current() -> None:
+                sig = _playwright_page_signature(page)
+                if sig in seen_signatures:
+                    return
+                seen_signatures.add(sig)
+                pages.append(_playwright_collect(page, url))
+
+            collect_current()
+            if auto_paginate:
+                while len(pages) < max_pages:
+                    before_sig = _playwright_page_signature(page)
+                    if not _playwright_click_next(page, next_selector=next_selector, wait_seconds=wait_seconds):
+                        break
+                    if _playwright_page_signature(page) == before_sig:
+                        break
+                    collect_current()
+
+            if len(pages) == 1:
+                html = pages[0]["html"]
+            else:
+                fragments = []
+                for idx, item in enumerate(pages, start=1):
+                    fragments.append(
+                        "<section data-page-index='{}' data-page-url='{}'>{}</section>".format(
+                            idx, item.get("url", ""), item.get("html", "")
+                        )
+                    )
+                html = "<html><body>{}</body></html>".format("".join(fragments))
+
+            return {
+                "url": page.url or url,
+                "title": page.title(),
+                "html": html,
+                "page_count": len(pages),
+                "pages": [{"url": item["url"], "title": item["title"]} for item in pages],
+                "resource_urls": resource_urls,
+                "network_json": _trim_network_json(
+                    _expand_paginated_json(_expand_paginated_json_with_page(page, network_json), timeout=timeout)
+                ),
+                "browser_engine": "playwright",
+            }
+        finally:
+            browser.close()
+
+
+def _fetch_page_requests(url: str, timeout: int) -> dict:
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+        )
+    }
+    response = requests.get(url, headers=headers, timeout=timeout, verify=False)
+    response.raise_for_status()
+    if not response.encoding:
+        response.encoding = response.apparent_encoding
+    html = (response.text or "").lstrip("\ufeff")
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+    title = re.sub(r"\s+", " ", title_match.group(1)).strip() if title_match else ""
+    return {
+        "url": response.url or url,
+        "title": title,
+        "html": html,
+        "page_count": 1,
+        "pages": [{"url": response.url or url, "title": title}],
+        "resource_urls": [],
+        "network_json": [],
+        "browser_engine": "requests",
+    }
 
 
 def _try_activate_tab(page: ChromiumPage, section_hint: str, wait_seconds: float) -> None:
@@ -362,6 +778,29 @@ def fetch_page(
     Pagination is inferred by ranking next-page controls near the target section.
     """
 
+    try:
+        return _fetch_page_playwright(
+            url=url,
+            wait_seconds=wait_seconds,
+            actions_json=actions_json,
+            timeout=timeout,
+            auto_paginate=auto_paginate,
+            max_pages=max_pages,
+            section_hint=section_hint,
+            next_selector=next_selector,
+        )
+    except Exception as playwright_error:
+        last_error = playwright_error
+
+    try:
+        payload = _fetch_page_requests(url=url, timeout=timeout)
+        payload["playwright_error"] = str(last_error)
+        return payload
+    except Exception as requests_error:
+        last_error = RuntimeError(
+            "playwright_error={}; requests_error={}".format(last_error, requests_error)
+        )
+
     actions = _parse_actions(actions_json)
     page = _create_chromium_page()
 
@@ -439,6 +878,9 @@ def fetch_page(
             "page_count": len(pages),
             "pages": [{"url": item["url"], "title": item["title"]} for item in pages],
             "resource_urls": resource_urls if isinstance(resource_urls, list) else [],
+            "network_json": [],
+            "browser_engine": "drissionpage",
+            "playwright_error": str(last_error),
         }
     finally:
         page.quit()

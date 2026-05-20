@@ -9,10 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.extract_fields import extract_fields
-from tools.extract_list_rows import extract_list_rows
-from tools.extract_nav_pdf_indices import extract_nav_pdf_indices
-from tools.extract_table_rows import extract_table_rows
+from tools.get_html_content import get_html_content
+from tools.parse_pdf_content import parse_pdf_content
 
 
 class ToolSpec:
@@ -24,155 +22,48 @@ class ToolSpec:
 
 
 TOOLS: Dict[str, ToolSpec] = {
-    "extract_fields": ToolSpec(
-        name="extract_fields",
+    "get_html_content": ToolSpec(
+        name="get_html_content",
         description=(
-            "Extract structured fields from URL based on fields_json config. "
-            "HTML fetch + cleaning + context compression are fixed internal steps."
+            "Fetch and clean a web page. Returns cleaned HTML, visible text, and detected tables. "
+            "Does not extract business fields."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "url": {"type": "string"},
-                "fields_json": {
-                    "type": "string",
-                    "description": "JSON object as string that defines field labels/types",
-                },
-                "token_budget": {"type": "integer", "default": 3000},
-            },
-            "required": ["url", "fields_json"],
-            "additionalProperties": False,
-        },
-        handler=extract_fields,
-    ),
-    "extract_table_rows": ToolSpec(
-        name="extract_table_rows",
-        description=(
-            "Extract repeated table rows from URL using row_schema_json. "
-            "Returns data as a list of objects, one item per table row."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "url": {"type": "string"},
-                "row_schema_json": {
-                    "type": "string",
-                    "description": "JSON object string that defines row fields and labels",
-                },
-                "table_hint": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional hint to locate target table (e.g. table title or keyword).",
-                },
-                "auto_paginate": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Whether to click pager controls and merge all collected pages.",
-                },
-                "max_pages": {
-                    "type": "integer",
-                    "default": 20,
-                    "description": "Maximum number of pages to collect when auto_paginate is enabled.",
-                },
-                "next_selector": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional CSS/XPath selector for the next-page control.",
-                },
-            },
-            "required": ["url", "row_schema_json"],
-            "additionalProperties": False,
-        },
-        handler=extract_table_rows,
-    ),
-    "extract_list_rows": ToolSpec(
-        name="extract_list_rows",
-        description=(
-            "Extract repeated records from list-style pages (announcements/news/notices). "
-            "Returns data as a list of objects."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "url": {"type": "string"},
-                "row_schema_json": {
-                    "type": "string",
-                    "description": "JSON object string that defines row fields and labels",
-                },
-                "list_selector": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional CSS selector for list container.",
-                },
-                "item_selector": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional CSS selector for row/item nodes.",
-                },
-                "date_regex": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional date regex for publish date extraction.",
-                },
-                "max_items": {"type": "integer", "default": 100},
-                "auto_paginate": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Whether to click pager controls and merge all collected pages.",
-                },
-                "max_pages": {
-                    "type": "integer",
-                    "default": 20,
-                    "description": "Maximum number of pages to collect when auto_paginate is enabled.",
-                },
-                "next_selector": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional CSS/XPath selector for the next-page control.",
-                },
-            },
-            "required": ["url", "row_schema_json"],
-            "additionalProperties": False,
-        },
-        handler=extract_list_rows,
-    ),
-    "extract_nav_pdf_indices": ToolSpec(
-        name="extract_nav_pdf_indices",
-        description=(
-            "Extract product NAV/yield indices from a PDF announcement URL. "
-            "It can also parse PDFs linked on a list page as a fallback. "
-            "Returns bankName, platformCode, crawlerTime and indices."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "url": {"type": "string"},
-                "bank_name": {
-                    "type": "string",
-                    "default": "北银理财",
-                    "description": "Bank or wealth management company name.",
-                },
-                "platform_code": {
-                    "type": "string",
-                    "default": "8001_BYLC",
-                    "description": "Platform code to attach to output records.",
-                },
-                "max_pdfs": {
-                    "type": "integer",
-                    "default": 20,
-                    "description": "Maximum number of linked PDFs to parse from the list page.",
-                },
+                "wait_seconds": {"type": "number", "default": 3.0},
                 "timeout": {"type": "integer", "default": 20},
-                "wait_seconds": {
-                    "type": "number",
-                    "default": 8.0,
-                    "description": "Wait seconds for dynamic HTML NAV pages.",
+                "section_hint": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional visible section/tab text to activate before reading the page.",
                 },
+                "auto_paginate": {"type": "boolean", "default": False},
+                "max_pages": {"type": "integer", "default": 1},
+                "next_selector": {"type": "string", "default": ""},
             },
             "required": ["url"],
             "additionalProperties": False,
         },
-        handler=extract_nav_pdf_indices,
+        handler=get_html_content,
+    ),
+    "parse_pdf_content": ToolSpec(
+        name="parse_pdf_content",
+        description=(
+            "Download and parse a PDF. Returns page text and detected tables. "
+            "Does not extract business fields."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "timeout": {"type": "integer", "default": 20},
+            },
+            "required": ["url"],
+            "additionalProperties": False,
+        },
+        handler=parse_pdf_content,
     ),
 }
 

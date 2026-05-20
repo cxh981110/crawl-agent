@@ -1,5 +1,5 @@
-﻿{
-  "prompt": "Extract announcement records from the target source. Output one announcement per item in data array.",
+{
+  "prompt_file": "bank_announcements.md",
   "fields_json": {
     "announcement_title": {
       "labels": ["公告名称", "公告标题", "标题", "title", "name"],
@@ -45,12 +45,5 @@
     "additionalProperties": true
   },
   "record_mode": "array",
-  "source_hint": "auto",
-  "tool_hints": {
-    "table_hint": "公告",
-    "list_selector": "",
-    "item_selector": "",
-    "date_regex": "",
-    "max_items": 100
-  }
+  "tool_hints": {}
 }

@@ -2,6 +2,7 @@
 import os
 import re
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 from typing import Any, Dict, List, Optional, TypedDict
 
 from dotenv import load_dotenv
@@ -16,8 +17,9 @@ DEFAULT_MODEL = "gpt-4.1-mini"
 DEFAULT_MCP_SERVER = Path(__file__).resolve().parent.parent / "mcp" / "server.py"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BUSINESS_DIR = PROJECT_ROOT / "businesses"
+PROMPT_DIR = PROJECT_ROOT / "prompts"
 DEFAULT_BUSINESS = "company_profile"
-MAX_TURNS = 8
+MAX_TURNS = 12
 
 
 load_dotenv(PROJECT_ROOT / ".env")
@@ -36,7 +38,6 @@ class LlmState(TypedDict, total=False):
     fallback_result: Optional[Dict[str, Any]]
     step_count: int
     record_mode: str
-    source_hint: str
     fields_json_text: str
     tool_hints: Dict[str, Any]
 
@@ -47,6 +48,14 @@ def _load_business_config(business: str) -> Dict[str, Any]:
         raise RuntimeError("Business config not found: {}".format(config_path))
     # Be tolerant to UTF-8 BOM from editors/PowerShell.
     return json.loads(config_path.read_text(encoding="utf-8-sig"))
+
+
+def _load_business_prompt(business: str, business_config: Dict[str, Any]) -> str:
+    prompt_file = business_config.get("prompt_file") or "{}.md".format(business)
+    prompt_path = PROMPT_DIR / str(prompt_file)
+    if prompt_path.exists():
+        return prompt_path.read_text(encoding="utf-8-sig").strip()
+    return str(business_config.get("prompt", "")).strip()
 
 
 def _to_openai_tools(mcp_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -91,6 +100,7 @@ def _llm_step_node(state: LlmState, config: Dict[str, Any]) -> LlmState:
         tools=state["tools"],
         tool_choice="auto",
         temperature=0,
+        timeout=config["request_timeout"],
     )
     message = response.choices[0].message
     tool_calls = message.tool_calls or []
@@ -169,46 +179,39 @@ def _route_after_llm_step(state: LlmState) -> str:
 def _tool_step_node(state: LlmState, config: Dict[str, Any]) -> LlmState:
     messages = list(state["messages"])
     final_result = None
+    seen_calls = _seen_tool_calls(messages)
     for tool_call in state.get("pending_tool_calls", []):
         args_text = tool_call.get("arguments") or "{}"
         try:
             args = json.loads(args_text)
             tool_name = tool_call["name"]
-            args["url"] = state["url"]
+            args["url"] = _safe_tool_url(target_url=state["url"], requested_url=args.get("url"))
+            call_key = _tool_call_key(tool_name, args)
+            if call_key in seen_calls:
+                tool_output = (
+                    "TOOL_NOTICE: duplicate tool call skipped. "
+                    "Use the content already returned by previous tool calls and produce the final JSON. "
+                    "If only direct-sale records are present, return those records instead of searching indefinitely."
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": tool_output,
+                    }
+                )
+                continue
+            seen_calls.add(call_key)
 
-            # Enforce stable arguments to prevent endless LLM tool-arg drift.
-            if tool_name == "extract_fields":
-                args["fields_json"] = state.get("fields_json_text", args.get("fields_json", "{}"))
-                args.pop("actions_json", None)
-                args.pop("wait_seconds", None)
-                args.pop("timeout", None)
-            elif tool_name in {"extract_table_rows", "extract_list_rows"}:
-                args["row_schema_json"] = state.get("fields_json_text", args.get("row_schema_json", "{}"))
-                args.pop("actions_json", None)
-                args.pop("wait_seconds", None)
-                args.pop("timeout", None)
+            # Keep the target URL stable while allowing the LLM to choose the MCP tool.
+            if tool_name == "get_html_content":
                 tool_hints = state.get("tool_hints", {}) or {}
-                if tool_name == "extract_table_rows" and "table_hint" in tool_hints and "table_hint" not in args:
-                    args["table_hint"] = tool_hints["table_hint"]
-                if tool_name == "extract_table_rows":
-                    for key in ("auto_paginate", "max_pages", "next_selector"):
-                        if key in tool_hints and key not in args:
-                            args[key] = tool_hints[key]
-                if tool_name == "extract_list_rows":
-                    for key in (
-                        "list_selector",
-                        "item_selector",
-                        "date_regex",
-                        "max_items",
-                        "auto_paginate",
-                        "max_pages",
-                        "next_selector",
-                    ):
-                        if key in tool_hints and key not in args:
-                            args[key] = tool_hints[key]
-            elif tool_name == "extract_nav_pdf_indices":
+                for key in ("timeout", "wait_seconds", "section_hint", "auto_paginate", "max_pages", "next_selector"):
+                    if key in tool_hints and key not in args:
+                        args[key] = tool_hints[key]
+            elif tool_name == "parse_pdf_content":
                 tool_hints = state.get("tool_hints", {}) or {}
-                for key in ("bank_name", "platform_code", "max_pdfs", "timeout", "wait_seconds"):
+                for key in ("timeout",):
                     if key in tool_hints and key not in args:
                         args[key] = tool_hints[key]
 
@@ -239,6 +242,47 @@ def _tool_step_node(state: LlmState, config: Dict[str, Any]) -> LlmState:
     if final_result is not None:
         result["final_result"] = final_result
     return result
+
+
+def _seen_tool_calls(messages: List[Dict[str, Any]]) -> set[str]:
+    seen: set[str] = set()
+    history = list(messages)
+    if history and history[-1].get("role") == "assistant" and history[-1].get("tool_calls"):
+        history = history[:-1]
+    for message in history:
+        if message.get("role") != "assistant":
+            continue
+        for call in message.get("tool_calls", []) or []:
+            fn = call.get("function") or {}
+            name = fn.get("name") or ""
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except Exception:
+                args = {}
+            seen.add(_tool_call_key(name, args))
+    return seen
+
+
+def _tool_call_key(tool_name: str, args: Dict[str, Any]) -> str:
+    normalized = {key: args.get(key) for key in sorted(args)}
+    return "{}:{}".format(tool_name, json.dumps(normalized, ensure_ascii=True, sort_keys=True))
+
+
+def _safe_tool_url(target_url: str, requested_url: Any) -> str:
+    if not isinstance(requested_url, str) or not requested_url.strip():
+        return target_url
+
+    requested = urljoin(target_url, requested_url.strip())
+    target_parts = urlparse(target_url)
+    requested_parts = urlparse(requested)
+    if not requested_parts.scheme or not requested_parts.netloc:
+        return target_url
+
+    target_host = (target_parts.hostname or "").lower()
+    requested_host = (requested_parts.hostname or "").lower()
+    if requested_host == target_host or requested_host.endswith("." + target_host):
+        return requested
+    return target_url
 
 
 def _validate_output_node(state: LlmState, config: Dict[str, Any]) -> LlmState:
@@ -283,6 +327,7 @@ def _build_llm_graph(client: OpenAI, mcp_client: StdioMCPClient, model_name: str
         "client": client,
         "mcp_client": mcp_client,
         "model_name": model_name,
+        "request_timeout": float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "120")),
     }
 
     graph.add_node("llm_step", lambda state: _llm_step_node(state, runtime_config))
@@ -322,11 +367,10 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
     client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
     _check_llm_connectivity(client=client, model_name=model_name, base_url=base_url)
     business_config = _load_business_config(business)
-    business_prompt = business_config.get("prompt", "")
+    business_prompt = _load_business_prompt(business, business_config)
     fields_json_obj = business_config.get("fields_json", {})
     output_schema = business_config.get("output_schema", {})
     record_mode = str(business_config.get("record_mode", "object")).lower()
-    source_hint = str(business_config.get("source_hint", "auto")).lower()
     tool_hints = business_config.get("tool_hints", {})
     data_schema_type = (((output_schema.get("properties") or {}).get("data") or {}).get("type"))
     fields_json_text = json.dumps(fields_json_obj, ensure_ascii=False)
@@ -341,36 +385,23 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
         if not mcp_tools:
             raise RuntimeError("No tools found from MCP server.")
 
-        # Expose only relevant tools for the current business mode/hint.
-        allowed_tool_names = set()
-        if source_hint == "nav_pdf":
-            allowed_tool_names = {"extract_nav_pdf_indices"}
-        elif (data_schema_type == "array" or record_mode == "array") and source_hint == "table":
-            allowed_tool_names = {"extract_table_rows"}
-        elif (data_schema_type == "array" or record_mode == "array") and source_hint == "list":
-            allowed_tool_names = {"extract_list_rows"}
-        elif data_schema_type == "array" or record_mode == "array":
-            allowed_tool_names = {"extract_table_rows", "extract_list_rows"}
-        else:
-            allowed_tool_names = {"extract_fields"}
-
-        filtered_mcp_tools = [tool for tool in mcp_tools if tool.get("name") in allowed_tool_names]
-        tools = _to_openai_tools(filtered_mcp_tools)
+        tools = _to_openai_tools(mcp_tools)
         if not tools:
-            raise RuntimeError("No allowed tools for current business mode/hint.")
+            raise RuntimeError("No tools available.")
         system_prompt = (
             "You are a web extraction agent. "
             "You must use available tools to extract structured data for the given URL. "
-            "Prefer API/network-derived data before HTML parsing. "
-            "Page fetch and HTML cleaning are fixed internal steps in extraction tools. "
-            "Use extract_fields for object extraction, and use extract_table_rows/extract_list_rows for array extraction. "
-            "Use extract_nav_pdf_indices when source_hint is nav_pdf. "
+            "Choose tools yourself based on the URL, page content, business goal, and tool descriptions. "
+            "MCP tools are low-level content tools, not business extractors: "
+            "use get_html_content for web pages and parse_pdf_content for PDF documents. "
+            "When get_html_content returns network_json, inspect those response bodies as page content. "
+            "If returned content reveals same-site HTML, JSON, PDF, or JavaScript URLs that are needed for extraction, you may call tools on those same-site URLs. "
+            "You are responsible for interpreting returned text/tables and producing the final business JSON. "
             "Return strict JSON that matches the provided output schema exactly."
         )
         if data_schema_type == "array" or record_mode == "array":
             system_prompt += (
-                " If output data is an array of records, choose extraction tool by source_hint: "
-                "table -> extract_table_rows, list -> extract_list_rows, auto -> try list/table and pick better coverage. "
+                " If output data is an array of records, choose the tool from the actual source shape and tool descriptions. "
                 "Ensure each row item strictly matches required fields."
             )
         user_prompt = (
@@ -378,13 +409,10 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
             "Business: {}\n"
             "Business prompt:\n{}\n\n"
             "record_mode: {}\n"
-            "source_hint: {}\n"
             "tool_hints:\n{}\n\n"
-            "fields_json (pass this string to extract_fields fields_json argument):\n{}\n\n"
-            "If extracting array rows, pass this same JSON string to extract_table_rows/extract_list_rows as row_schema_json.\n"
-            "When source_hint=list and tool_hints has selectors, pass them to extract_list_rows.\n"
-            "When source_hint=table and tool_hints has table_hint, pass it to extract_table_rows.\n\n"
-            "When source_hint=nav_pdf, call extract_nav_pdf_indices with url and matching tool_hints.\n\n"
+            "fields_json (target business fields; do not pass it to MCP tools unless a tool explicitly asks for it):\n{}\n\n"
+            "Call the appropriate MCP content tool, then extract the final JSON yourself from returned text/tables. "
+            "Use tool_hints only as business constants or runtime options, not as a tool-routing directive.\n\n"
             "Do not invent or modify schema fields for tool arguments; always use the provided schema JSON.\n\n"
             "Output JSON schema:\n{}\n"
             "You can call tools multiple times to complete extraction."
@@ -393,7 +421,6 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
             business,
             business_prompt,
             record_mode,
-            source_hint,
             tool_hints_text,
             fields_json_text,
             output_schema_text,
@@ -415,7 +442,6 @@ def run_llm_agent(url: str, model: str = None, business: str = DEFAULT_BUSINESS)
                 "last_content": "",
                 "step_count": 0,
                 "record_mode": record_mode,
-                "source_hint": source_hint,
                 "fields_json_text": fields_json_text,
                 "tool_hints": tool_hints,
             }
@@ -506,6 +532,7 @@ def _check_llm_connectivity(client: OpenAI, model_name: str, base_url: Optional[
             messages=[{"role": "user", "content": "ping"}],
             max_tokens=1,
             temperature=0,
+            timeout=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "120")),
         )
     except APIConnectionError as exc:
         raise RuntimeError(

@@ -1,5 +1,5 @@
 {
-  "prompt": "Extract product NAV or yield index records from the target PDF announcement URL. Output bankName, platformCode, crawlerTime, and indices.",
+  "prompt_file": "nav_pdf_indices.md",
   "fields_json": {
     "indices": {
       "labels": ["净值", "单位净值", "累计净值", "万份收益", "七日年化收益率"],
@@ -64,11 +64,9 @@
     "additionalProperties": true
   },
   "record_mode": "object",
-  "source_hint": "nav_pdf",
   "tool_hints": {
     "bank_name": "北银理财",
     "platform_code": "8001_BYLC",
-    "max_pdfs": 20,
     "timeout": 20,
     "wait_seconds": 8.0
   }

@@ -1,7 +1,7 @@
 # Web Extraction Agent (LLM + MCP)
 
 This project runs an autonomous extraction agent with generic tools.
-You can switch business scenarios by only changing `businesses/*.json`.
+You can switch business scenarios by changing `businesses/*.json` and the matching prompt in `prompts/*.md`.
 
 ## Run
 
@@ -26,12 +26,13 @@ Agent orchestration is implemented with LangGraph for controllable tool loops an
 
 Business configs are in `businesses/*.json`. Each file defines:
 
-- `prompt`: business-specific extraction intent
+- `prompt_file`: optional Markdown prompt filename under `prompts/`; defaults to `<business>.md`
 - `record_mode`: `object` or `array`
-- `source_hint`: `auto` / `table` / `list`
-- `tool_hints`: optional tool parameters (selectors, table hints, max items, token budget)
-- `fields_json`: schema passed to `extract_fields`
+- `tool_hints`: optional business constants or runtime options; never a tool-routing directive
+- `fields_json`: target business fields for the LLM to extract from tool-returned content
 - `output_schema`: JSON schema used to validate final LLM output
+
+Business prompts are stored in `prompts/*.md`. Keep prompts focused on business goals, extraction rules, missing-value policy, deduplication, and output constraints. Do not hard-code which MCP tool should be called in a business prompt.
 
 Example:
 
@@ -47,10 +48,9 @@ python -m agent.llm_cli "https://www.beijingbobwealth.com.cn/xxpl/cpgg/fxgg/inde
 
 ## Generic toolchain
 
-- Fixed internal preprocessing: fetch HTML + clean noise + build context (not exposed to LLM as separate tools)
-- `extract_table_rows`: array extraction for table pages
-- `extract_list_rows`: array extraction for list pages (announcements/news/notices)
-- `extract_fields`: object extraction pipeline with built-in preprocessing
+- `get_html_content`: fetch and clean a web page, returning cleaned HTML, visible text, and detected tables
+- `parse_pdf_content`: download and parse a PDF, returning page text and detected tables
+- The LLM chooses the MCP tool and performs the final business extraction from returned content.
 
 ## Output
 

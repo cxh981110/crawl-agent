@@ -1,5 +1,5 @@
 {
-  "prompt": "Extract all fund distribution institutions from the target page. The page may contain a table of multiple sales organizations. You MUST extract each row as a separate item in a list. Each row represents one sales organization.",
+  "prompt_file": "fund_snapshot.md",
   "fields_json": {
     "fund_name": {
       "labels": ["\u4ea7\u54c1\u5168\u79f0", "\u4ea7\u54c1\u540d\u79f0", "\u4ea7\u54c1\u7b80\u79f0", "\u57fa\u91d1\u540d\u79f0", "\u57fa\u91d1\u7b80\u79f0", "\u96c6\u5408\u8ba1\u5212\u540d\u79f0", "\u8ba1\u5212\u540d\u79f0", "fund name", "name", "product name", "fundName", "fundFullName"],
@@ -63,10 +63,11 @@
     "additionalProperties": true
   },
   "record_mode": "array",
-  "source_hint": "table",
   "tool_hints": {
-    "table_hint": "\u9500\u552e\u673a\u6784",
+    "section_hint": "\u9500\u552e\u673a\u6784",
+    "wait_seconds": 3,
+    "timeout": 25,
     "auto_paginate": true,
-    "max_pages": 50
+    "max_pages": 5
   }
 }
