@@ -15,7 +15,7 @@ def main() -> int:
     #     print('Usage: python -m agent.llm_cli "<url>" [--business <name>] [--model <name>]', file=sys.stderr)
     #     return 1
 
-    url = "https://www.integrity-funds.com/products/zhishu/019572/index.html"
+    url = "https://www.gfund.com/fundDetail/014818/index.html"
     business = "fund_snapshot"
     parser = argparse.ArgumentParser(description="Run LLM + MCP extraction agent.")
     parser.add_argument("url", nargs="?", default=url, help="Target page URL")

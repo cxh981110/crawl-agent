@@ -80,8 +80,8 @@ def get_html_content(
     response: dict[str, Any] = {
         "url": page_payload.get("url", url),
         "title": page_payload.get("title"),
-        "cleaned_html": cleaned_html[:html_limit],
-        "text": text[:30000],
+        # "cleaned_html": cleaned_html[:html_limit],
+        "text": text[:15000],
         "tables": _extract_tables(soup),
         "network_json": page_payload.get("network_json", []),
         "evidence": {
